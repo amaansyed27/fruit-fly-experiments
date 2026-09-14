@@ -10,13 +10,15 @@ Activity propagated through the fixed MaleCNS v1.0 connectome may produce above-
 - Retain all released directed edges between those neurons: expected **25,582,938 edges / 124,177,617 synaptic contacts**.
 - Use synapse count as connection strength; GABA, glutamate and histamine are treated as inhibitory proxies, then each postsynaptic neuron's absolute incoming weights are normalized.
 - Render an egocentric Pong sensor image and rotate its control axis into the fly's horizontal visual axis.
-- Drive mapped L1/R7/R8 optic-column neurons from luminance/motion and LC10a from coarse pixel motion. No internal `ball_y`, ball velocity, or target coordinate enters the controller.
+- Drive mapped L1/R7/R8 optic-column neurons from luminance/motion. LC10a receives a bright moving-target signal computed only from rendered pixels; no internal `ball_y`, ball velocity, or target coordinate enters the controller.
 - Run the full fixed sparse graph with simplified leaky integrate-and-fire dynamics.
-- Read bilateral activity from steering-related DNs (`DNa01`, `DNa02`, `DNa03`, `DNa11`, `DNb02`, `DNg13`). Right-minus-left activity is translated to DOWN/UP; a deadband yields NEUTRAL.
+- Read bilateral activity from steering-related DNs (`DNa01`, `DNa02`, `DNa03`, `DNa11`, `DNb02`, `DNg13`). A short spike trace is compared by **relative left/right activity**, so sparse DN output is not discarded by an arbitrary large absolute threshold.
+- The dashboard projects released MaleCNS `somaLocation`/`tosomaLocation` coordinates onto X/Z. The positions are anatomical data; the 2-D projection, orientation, colors and activity persistence are visualization choices.
+- **No model or readout is trained.** Connectome weights remain fixed throughout the experiment.
 
 ## Controls
 
-`--controller random` is the V0.1 chance baseline. No learning or plasticity is enabled.
+`--controller random` is the chance baseline. No learning or plasticity is enabled.
 
 ## Metrics
 
@@ -39,4 +41,4 @@ The CUDA path is about **11.8× faster** by measured steps/s. PyTorch currently 
 
 ## Limitations
 
-The wiring, neuron IDs, annotations and synapse-count-derived strengths are biological data. Point-neuron dynamics, neurotransmitter sign simplification, frame-to-vision mapping, 90° control-axis rotation, LC10a motion drive, and the Pong mapping of steering laterality to vertical paddle movement are engineered assumptions. This is not a biologically exact digital fly.
+The wiring, neuron IDs, annotations, soma/soma-tract coordinates and synapse-count-derived strengths are biological data. Point-neuron dynamics, neurotransmitter sign simplification, pixel-to-neuron encoding, 90° control-axis rotation, LC10a target salience, relative DN motor decoding, and the Pong mapping of steering laterality to vertical paddle movement are engineered assumptions. This is not a biologically exact digital fly.
