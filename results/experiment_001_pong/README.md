@@ -26,20 +26,18 @@ Score, rally duration, action distribution, output activity, brain-step latency,
 
 ## Results
 
-### First full fly-controller run
+### Seed 1 paired comparison
 
-A 30 s run on seed 1 using CUDA completed **1500 simulation steps** on the full retained MaleCNS graph.
+Both controllers were evaluated for 30 s / 1500 simulation steps on Pong seed 1.
 
-| Metric | Result |
-|---|---:|
-| Fly score | 0 |
-| Opponent score | 3 |
-| UP actions | 191 |
-| NEUTRAL actions | 1189 |
-| DOWN actions | 120 |
-| Mean brain latency | 2.841 ms |
+| Controller | Fly score | Opponent score | UP | NEUTRAL | DOWN |
+|---|---:|---:|---:|---:|---:|
+| MaleCNS fly controller | 0 | 3 | 191 | 1189 | 120 |
+| Random controller | 0 | 7 | 480 | 503 | 517 |
 
-This is a **single preliminary run**, not evidence of above-random performance. The random baseline and multi-seed comparison are still required. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
+The MaleCNS controller conceded **3 points vs 7 for random** on this seed, but both scored zero. This is only one paired seed and is **not enough to claim above-random performance**. A multi-seed comparison is required before interpreting the result.
+
+The fly-controller run had mean brain-step latency **2.841 ms** on CUDA. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
 
 ### Local performance benchmark
 
