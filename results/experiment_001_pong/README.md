@@ -18,26 +18,54 @@ Activity propagated through the fixed MaleCNS v1.0 connectome may produce above-
 
 ## Controls
 
-`--controller random` is the chance baseline. No learning or plasticity is enabled.
+Four controller modes are available:
+
+- `--controller fly` — fixed MaleCNS simulation and biological readout.
+- `--controller random` — uniform random UP/NEUTRAL/DOWN.
+- `--controller neutral` — always NEUTRAL; tests whether simply staying near the centre is strong.
+- `--controller matched-random` — ignores pixels but samples actions using the aggregate MaleCNS action frequencies observed over seeds 1–10. This tests whether any advantage is explained by action-frequency bias rather than sensorimotor structure.
+
+No learning or plasticity is enabled.
 
 ## Metrics
 
-Score, rally duration, action distribution, output activity, brain-step latency, FPS, and run-level hit/score proxies. Use multiple seeds for comparisons.
+Score, rally duration, action distribution, output activity, brain-step latency, FPS, and run-level hit/score proxies. Use paired seeds for comparisons.
 
 ## Results
 
-### Seed 1 paired comparison
+### 10-seed MaleCNS vs uniform-random comparison
 
-Both controllers were evaluated for 30 s / 1500 simulation steps on Pong seed 1.
+Each controller was evaluated for 30 s / 1500 simulation steps on the same ten Pong seeds.
 
-| Controller | Fly score | Opponent score | UP | NEUTRAL | DOWN |
-|---|---:|---:|---:|---:|---:|
-| MaleCNS fly controller | 0 | 3 | 191 | 1189 | 120 |
-| Random controller | 0 | 7 | 480 | 503 | 517 |
+| Seed | MaleCNS opponent score | Random opponent score | Difference |
+|---:|---:|---:|---:|
+| 1 | 3 | 7 | 4 |
+| 2 | 3 | 4 | 1 |
+| 3 | 1 | 5 | 4 |
+| 4 | 2 | 7 | 5 |
+| 5 | 2 | 4 | 2 |
+| 6 | 2 | 7 | 5 |
+| 7 | 3 | 4 | 1 |
+| 8 | 1 | 5 | 4 |
+| 9 | 1 | 4 | 3 |
+| 10 | 4 | 8 | 4 |
+| **Mean** | **2.2** | **5.5** | **3.3** |
 
-The MaleCNS controller conceded **3 points vs 7 for random** on this seed, but both scored zero. This is only one paired seed and is **not enough to claim above-random performance**. A multi-seed comparison is required before interpreting the result.
+The MaleCNS controller conceded fewer points on **all 10/10 paired seeds**. Mean points conceded fell from **5.5 to 2.2**, a **60% reduction** relative to uniform random. An exact two-sided sign test on the paired direction gives **p = 0.00195**.
 
-The fly-controller run had mean brain-step latency **2.841 ms** on CUDA. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
+However, this is **not yet sufficient evidence of visually guided connectome behavior**. Across the same ten fly runs, the action distribution was approximately **16.6% UP / 67.5% NEUTRAL / 16.0% DOWN**. A mostly-neutral paddle may outperform uniform random simply because random movement wanders away from useful positions. Therefore the neutral and matched-random controls are required before interpreting the result biologically.
+
+Both MaleCNS and uniform-random controllers scored zero against the opponent in these ten runs, so the current evidence concerns **defensive survival / reduced misses**, not successful offensive Pong play.
+
+### Aggregate fly action counts, seeds 1–10
+
+| Action | Count | Share |
+|---|---:|---:|
+| UP | 2,487 | 16.58% |
+| NEUTRAL | 10,118 | 67.45% |
+| DOWN | 2,395 | 15.97% |
+
+Run logs are intentionally gitignored; analyze individual logs locally with `python scripts/analyze_pong.py <run.csv>`.
 
 ### Local performance benchmark
 
