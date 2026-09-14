@@ -1,72 +1,46 @@
 # Fruit Fly Experiments
 
-A series of small experiments using the mapped fruit-fly connectome as a computational substrate.
+Small, visual experiments using the **MaleCNS v1.0 adult male Drosophila connectome** as a computational substrate.
 
-The goal is to go beyond one-off demos and test **behaviour, learning, memory, transfer, and experience-dependent change** while keeping every experiment visual and easy to understand.
+## Experiment 001 — Pong
 
-## Plan
-
-We build one experiment at a time, directly on `main`.
-
-| # | Experiment | Main question |
-|---|---|---|
-| 1 | **Pong** | Can connectome activity drive a simple real-time control task? |
-| 2 | **Endless Runner** | Can it handle left/right/jump decisions in a changing environment? |
-| 3 | **Learning / Plasticity** | Can reward-modulated synaptic changes improve performance over time? |
-| 4 | **Fly School** | Can one persistent brain learn several tasks without being reset? |
-| 5 | **Tiny Language** | Can arbitrary symbols become grounded in actions/rewards, then combine in unseen ways? |
-| 6 | **Two Childhoods** | Do two identical starting brains diverge after different experiences? |
-| 7 | **Drawing** | Can neural output progressively learn to control a cursor and reproduce shapes? |
-
-More experiments can be added as the project develops.
-
-## Presentation
-
-Every experiment should be understandable from a short video.
-
-Typical layout:
+**Status:** V0.1 implementation complete; fixed wiring, no learning.
 
 ```text
-┌──────────────────────────────┬───────────────────┐
-│                              │ live brain view   │
-│       game / environment     │ active neurons    │
-│                              │ output / decision │
-│                              │ reward / score    │
-└──────────────────────────────┴───────────────────┘
-
-        timeline / learning progress
+rendered Pong vision
+        ↓
+MaleCNS visual neurons (optic columns + LC10a)
+        ↓
+166,700-neuron retained connectome
+        ↓
+steering descending-neuron activity
+        ↓
+UP / DOWN / NEUTRAL paddle action
 ```
 
-Show the full loop clearly:
+The wiring, neuron identities, annotations and synapse-count-derived strengths come from MaleCNS. Neuron dynamics, visual encoding and the Pong motor interface are simulation choices. This is **not** an uploaded or biologically exact fly brain.
 
-```text
-sensory input → neural activity → output → action → reward → change
+### Run
+
+```powershell
+cd D:\Programming\03_Projects\personal-projects\04_Miscellaneous\fruit-fly-experiments
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .[dev]
+python scripts\fetch_data.py --build
+python -m fruit_fly_experiments.experiments.pong --controller fly --device auto --seconds 30 --demo
 ```
 
-Useful overlays include score, active neurons, chosen action, reward, trial number, learning iteration, and performance over time.
+Baseline and analysis:
 
-## Research Plan
+```powershell
+python -m fruit_fly_experiments.experiments.pong --controller random --seconds 30
+python scripts\analyze_pong.py results\experiment_001_pong\runs\<run.csv>
+python scripts\benchmark.py --device cpu
+python scripts\benchmark.py --device cuda
+pytest -q
+```
 
-Each experiment should have:
+If `torch.cuda.is_available()` is false, install a CUDA-enabled PyTorch build appropriate for the NVIDIA driver, then rerun with `--device cuda`.
 
-- a clear hypothesis before training
-- a fixed-connectome baseline
-- a learning/plasticity version where relevant
-- repeat runs with multiple seeds
-- simple measurable outcomes such as score, survival time, error rate, learning speed, retention, and transfer
-- ablations where possible to test whether behaviour really depends on the intended neural pathway or learning rule
-
-Longer-term research directions:
-
-- continual learning and catastrophic forgetting
-- transfer between unrelated tasks
-- memory retention
-- experience-dependent behavioural divergence
-- grounded symbolic learning and compositional generalisation
-- comparison with conventional RL agents under the same environment and reward budget
-
-## Scientific Caution
-
-The connectome is a measured wiring map, not a complete digital copy of a living fly brain. Neuron dynamics, sensory encoding, plasticity, reward signalling, and other biological processes are simulated choices.
-
-Claims should therefore stay precise: **simulated connectome behaviour**, not consciousness or a fully uploaded brain.
+MaleCNS data is downloaded from Janelia and kept under `data/` (gitignored). Dataset: CC BY 4.0. Project code is independent and does not vendor third-party simulator code.

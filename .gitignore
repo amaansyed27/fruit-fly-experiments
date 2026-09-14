@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+data/
+results/experiment_001_pong/runs/
+results/experiment_001_pong/*.csv
+results/experiment_001_pong/*.json
+!results/experiment_001_pong/README.md
+.DS_Store
