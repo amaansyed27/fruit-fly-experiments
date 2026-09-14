@@ -76,9 +76,7 @@ def test_headless_fly_experiment_with_tiny_graph(tmp_path, monkeypatch):
     pd.DataFrame({"column": [], "L1": [], "R7": [], "R8": []}).to_excel(root / "raw" / FILES["optic"], index=False)
     monkeypatch.chdir(tmp_path)
 
-    result = run_experiment("fly", .1, 1, "cpu", False, False, data_root=root)
-    assert result["steps"] == 5
-
-    no_vision = run_experiment("fly-no-vision", .1, 1, "cpu", False, False, data_root=root)
-    assert no_vision["steps"] == 5
-    assert no_vision["controller"] == "fly-no-vision"
+    for name in ("fly", "fly-no-vision", "fly-retina-only", "fly-lc10a-only"):
+        result = run_experiment(name, .1, 1, "cpu", False, False, data_root=root)
+        assert result["steps"] == 5
+        assert result["controller"] == name
