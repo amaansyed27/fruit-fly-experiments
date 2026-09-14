@@ -12,7 +12,7 @@ from fruit_fly_experiments.brain.simulator import BrainSimulator
 from fruit_fly_experiments.controllers.fly import FlyController
 from fruit_fly_experiments.controllers.random import MatchedRandomController, NeutralController, RandomController
 from fruit_fly_experiments.games.pong import ACTION_NAMES, PongEnv
-from fruit_fly_experiments.vision.encoder import FlyVisualEncoder
+from fruit_fly_experiments.vision.encoder import FlyVisualEncoder, NoVisionEncoder
 from .logging import RunLogger
 
 
@@ -20,11 +20,14 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
     root = data_root or default_data_root()
     env = PongEnv(seed=seed)
     sim = None
-    if controller_name == "fly":
+    if controller_name in {"fly", "fly-no-vision"}:
         graph = ConnectomeGraph.load(root / "processed")
         sim = BrainSimulator(graph, device=device, seed=seed)
-        optic = root / "raw" / FILES["optic"]
-        encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
+        if controller_name == "fly":
+            optic = root / "raw" / FILES["optic"]
+            encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
+        else:
+            encoder = NoVisionEncoder()
         controller = FlyController(sim, encoder)
     elif controller_name == "random":
         controller = RandomController(seed)
@@ -38,7 +41,7 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
     dashboard = None
     if demo:
         if sim is None:
-            raise ValueError("live dashboard currently requires --controller fly")
+            raise ValueError("live dashboard requires a MaleCNS controller")
         from fruit_fly_experiments.visualization.dashboard import Dashboard
         dashboard = Dashboard(sim)
 
@@ -110,7 +113,11 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Experiment 001: MaleCNS controls a Pong paddle")
-    parser.add_argument("--controller", choices=["fly", "random", "neutral", "matched-random"], default="fly")
+    parser.add_argument(
+        "--controller",
+        choices=["fly", "fly-no-vision", "random", "neutral", "matched-random"],
+        default="fly",
+    )
     parser.add_argument("--seconds", type=float, default=30.0)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
