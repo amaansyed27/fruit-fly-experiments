@@ -39,21 +39,21 @@ Score, rally duration, action distribution, output activity, brain-step latency,
 
 Each controller was evaluated for 30 s / 1500 simulation steps on the same ten Pong seeds. Lower opponent score means the fly-side paddle conceded fewer points.
 
-| Seed | MaleCNS | Uniform random | Always neutral | Matched random | MaleCNS no vision |
-|---:|---:|---:|---:|---:|---:|
-| 1 | 3 | 7 | 7 | 7 | 7 |
-| 2 | 3 | 4 | 5 | 3 | 5 |
-| 3 | 1 | 5 | 5 | 3 | 5 |
-| 4 | 2 | 7 | 4 | 3 | 4 |
-| 5 | 2 | 4 | 7 | 7 | 7 |
-| 6 | 2 | 7 | 4 | 5 | 4 |
-| 7 | 3 | 4 | 4 | 4 | 4 |
-| 8 | 1 | 5 | 7 | 8 | 7 |
-| 9 | 1 | 4 | 1 | 3 | 1 |
-| 10 | 4 | 8 | 6 | 6 | 6 |
-| **Mean conceded** | **2.2** | **5.5** | **5.0** | **4.9** | **5.0** |
+| Seed | MaleCNS | Uniform random | Always neutral | Matched random | MaleCNS no vision | Shuffled vision |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 3 | 7 | 7 | 7 | 7 | 7 |
+| 2 | 3 | 4 | 5 | 3 | 5 | 6 |
+| 3 | 1 | 5 | 5 | 3 | 5 | 6 |
+| 4 | 2 | 7 | 4 | 3 | 4 | 6 |
+| 5 | 2 | 4 | 7 | 7 | 7 | 5 |
+| 6 | 2 | 7 | 4 | 5 | 4 | 6 |
+| 7 | 3 | 4 | 4 | 4 | 4 | 8 |
+| 8 | 1 | 5 | 7 | 8 | 7 | 7 |
+| 9 | 1 | 4 | 1 | 3 | 1 | 6 |
+| 10 | 4 | 8 | 6 | 6 | 6 | 7 |
+| **Mean conceded** | **2.2** | **5.5** | **5.0** | **4.9** | **5.0** | **6.4** |
 
-The MaleCNS controller conceded fewer points than uniform random on **10/10 seeds**, fewer than always-neutral on **9/10 with 1 tie**, fewer than matched-random on **9/10 with 1 tie**, and fewer than the same MaleCNS simulation with visual input removed on **9/10 with 1 tie**.
+The normal MaleCNS controller conceded fewer points than uniform random on **10/10 seeds**, fewer than always-neutral on **9/10 with 1 tie**, fewer than matched-random on **9/10 with 1 tie**, fewer than no-vision MaleCNS on **9/10 with 1 tie**, and fewer than the first shuffled-vision permutation on **10/10 seeds**.
 
 Relative to the controls, mean points conceded fell by:
 
@@ -61,14 +61,17 @@ Relative to the controls, mean points conceded fell by:
 - **56.0% vs always-neutral** (5.0 → 2.2)
 - **55.1% vs matched-random** (4.9 → 2.2)
 - **56.0% vs MaleCNS no-vision** (5.0 → 2.2)
+- **65.6% vs the first shuffled-vision permutation** (6.4 → 2.2)
 
-Exact two-sided sign tests on paired direction give **p = 0.00195** vs uniform random and **p = 0.00391** vs always-neutral, matched-random, and no-vision (ties excluded).
+Exact two-sided sign tests on paired direction give **p = 0.00195** vs uniform random and the first shuffled-vision permutation, and **p = 0.00391** vs always-neutral, matched-random, and no-vision (ties excluded).
 
 The no-vision MaleCNS produced **1500/1500 NEUTRAL actions on every seed**, and its score pattern exactly matched the always-neutral control. Under the current dynamics/readout, removing visual drive therefore removes the movement that produced the MaleCNS advantage. This is evidence that **task visual input is necessary for the observed defensive behavior**.
 
-This still does not by itself show that the advantage depends on the *biologically correct visual entry points*. The next ablation is `fly-shuffled-vision`, which preserves the exact pixel-derived timing, drive amplitudes and number of stimulated neurons while scrambling which retained MaleCNS neurons receive that drive. If the normal MaleCNS controller outperforms this shuffled-entry control, the case for connectome-specific sensorimotor structure becomes stronger.
+The first shuffled-vision control used one fixed entry-point permutation (`shuffle_seed=424242`). It performed worse than the biological mapping on all ten Pong seeds, with **6.4 vs 2.2 mean points conceded**. That is consistent with the placement of visual drive in the real connectome mattering. However, this one permutation also produced a strong DOWN action bias, so one shuffled map is not enough for a robust placement claim. Multiple independent entry-point permutations are required next.
 
-All evaluated controllers have scored zero against the opponent in these runs, so the current evidence concerns **defensive survival / reduced misses**, not successful offensive Pong play.
+The strongest current conclusion is therefore **not** that a fruit-fly brain has learned Pong. Nothing was trained. Under this engineered simulator/interface, pixel-derived visual drive routed into biologically selected MaleCNS visual neurons and propagated through the fixed connectome produces defensive paddle behavior that outperforms multiple non-visual, random, distribution-matched, and first-pass shuffled-entry controls.
+
+All evaluated controllers scored zero against the opponent in these runs, so the evidence concerns **defensive survival / reduced misses**, not successful offensive Pong play.
 
 ### Aggregate fly action counts, seeds 1–10
 
