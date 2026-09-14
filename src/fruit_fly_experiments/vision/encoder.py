@@ -21,12 +21,7 @@ class EncodedVision:
 
 
 class NoVisionEncoder:
-    """Negative-control encoder that removes all task visual drive.
-
-    The brain simulation and descending-neuron motor readout still run normally,
-    but no Pong pixels are injected into visual neurons. This isolates whether
-    performance depends on task visual input rather than intrinsic dynamics.
-    """
+    """Negative-control encoder that removes all task visual drive."""
 
     def encode(self, frame: np.ndarray) -> EncodedVision:
         return EncodedVision(
@@ -36,6 +31,32 @@ class NoVisionEncoder:
             0.0,
             0,
             0,
+        )
+
+
+class ShuffledVisionEncoder:
+    """Control preserving visual timing/strength while scrambling entry neurons.
+
+    A fixed permutation maps every biologically selected visual-neuron index to a
+    different retained MaleCNS neuron. Pixel processing, number of driven neurons,
+    drive amplitudes and temporal structure are unchanged; only the biological
+    identity of the connectome entry points is destroyed.
+    """
+
+    def __init__(self, base, neuron_count: int, shuffle_seed: int = 424242) -> None:
+        self.base = base
+        self.permutation = np.random.default_rng(shuffle_seed).permutation(int(neuron_count)).astype(np.int64)
+
+    def encode(self, frame: np.ndarray) -> EncodedVision:
+        out = self.base.encode(frame)
+        mapped = self.permutation[out.neuron_indices] if len(out.neuron_indices) else out.neuron_indices.copy()
+        return EncodedVision(
+            mapped,
+            out.drive.copy(),
+            out.motion_centroid,
+            out.motion_energy,
+            out.retinal_count,
+            out.lc10a_count,
         )
 
 
