@@ -12,7 +12,12 @@ from fruit_fly_experiments.brain.simulator import BrainSimulator
 from fruit_fly_experiments.controllers.fly import FlyController
 from fruit_fly_experiments.controllers.random import MatchedRandomController, NeutralController, RandomController
 from fruit_fly_experiments.games.pong import ACTION_NAMES, PongEnv
-from fruit_fly_experiments.vision.encoder import FlyVisualEncoder, NoVisionEncoder, ShuffledVisionEncoder
+from fruit_fly_experiments.vision.encoder import (
+    FlyVisualEncoder,
+    NoVisionEncoder,
+    ShuffledVisionEncoder,
+    VisionSubsetEncoder,
+)
 from .logging import RunLogger
 
 
@@ -29,7 +34,14 @@ def run_experiment(
     root = data_root or default_data_root()
     env = PongEnv(seed=seed)
     sim = None
-    if controller_name in {"fly", "fly-no-vision", "fly-shuffled-vision"}:
+    fly_modes = {
+        "fly",
+        "fly-no-vision",
+        "fly-shuffled-vision",
+        "fly-retina-only",
+        "fly-lc10a-only",
+    }
+    if controller_name in fly_modes:
         graph = ConnectomeGraph.load(root / "processed")
         sim = BrainSimulator(graph, device=device, seed=seed)
         if controller_name == "fly-no-vision":
@@ -37,11 +49,14 @@ def run_experiment(
         else:
             optic = root / "raw" / FILES["optic"]
             base_encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
-            encoder = (
-                ShuffledVisionEncoder(base_encoder, graph.neurons.size, shuffle_seed=shuffle_seed)
-                if controller_name == "fly-shuffled-vision"
-                else base_encoder
-            )
+            if controller_name == "fly-shuffled-vision":
+                encoder = ShuffledVisionEncoder(base_encoder, graph.neurons.size, shuffle_seed=shuffle_seed)
+            elif controller_name == "fly-retina-only":
+                encoder = VisionSubsetEncoder(base_encoder, keep_retina=True, keep_lc10a=False)
+            elif controller_name == "fly-lc10a-only":
+                encoder = VisionSubsetEncoder(base_encoder, keep_retina=False, keep_lc10a=True)
+            else:
+                encoder = base_encoder
         controller = FlyController(sim, encoder)
     elif controller_name == "random":
         controller = RandomController(seed)
@@ -132,13 +147,26 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Experiment 001: MaleCNS controls a Pong paddle")
     parser.add_argument(
         "--controller",
-        choices=["fly", "fly-no-vision", "fly-shuffled-vision", "random", "neutral", "matched-random"],
+        choices=[
+            "fly",
+            "fly-no-vision",
+            "fly-shuffled-vision",
+            "fly-retina-only",
+            "fly-lc10a-only",
+            "random",
+            "neutral",
+            "matched-random",
+        ],
         default="fly",
     )
     parser.add_argument("--seconds", type=float, default=30.0)
     parser.add_argument("--seed", type=int, default=1)
-    parser.add_argument("--shuffle-seed", type=int, default=424242,
-                        help="entry-point permutation seed for --controller fly-shuffled-vision")
+    parser.add_argument(
+        "--shuffle-seed",
+        type=int,
+        default=424242,
+        help="entry-point permutation seed for --controller fly-shuffled-vision",
+    )
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--no-log", action="store_true")
