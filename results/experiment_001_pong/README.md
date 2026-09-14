@@ -24,7 +24,18 @@ Score, rally duration, action distribution, output activity, brain-step latency,
 
 ## Results
 
-No results are committed. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
+Behavioral results are not committed yet. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
+
+### Local performance benchmark
+
+Measured on Amaan's Windows laptop with an NVIDIA GeForce RTX 5060 Laptop GPU using the full retained MaleCNS graph (**166,700 neurons, 25,582,938 edges**):
+
+| Device | Median brain step | Mean brain step | Steps/s |
+|---|---:|---:|---:|
+| CPU | 20.675 ms | 20.823 ms | 48.0 |
+| RTX 5060 Laptop GPU (CUDA 13.0) | 1.735 ms | 1.761 ms | 568.0 |
+
+The CUDA path is about **11.8× faster** by measured steps/s. PyTorch currently reports sparse CSR support as beta; the warning is informational and the benchmark completed successfully.
 
 ## Limitations
 
