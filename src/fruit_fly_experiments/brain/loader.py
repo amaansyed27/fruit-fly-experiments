@@ -103,9 +103,10 @@ def _clean_superclass_mask(annotations: pd.DataFrame) -> np.ndarray:
     if "superclass" not in annotations:
         raise ValueError("MaleCNS annotations are missing 'superclass'")
     superclass = annotations["superclass"].fillna("").astype(str).str.strip()
-    mask = superclass.ne("").to_numpy()
+    mask = np.asarray(superclass.ne("").to_numpy(), dtype=bool).copy()
     if "status" in annotations:
-        mask &= annotations["status"].fillna("").astype(str).str.casefold().ne("glia").to_numpy()
+        status_keep = np.asarray(annotations["status"].fillna("").astype(str).str.casefold().ne("glia").to_numpy(), dtype=bool)
+        mask &= status_keep
     return mask
 
 
