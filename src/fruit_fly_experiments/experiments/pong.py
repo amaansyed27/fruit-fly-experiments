@@ -72,9 +72,7 @@ def run_experiment(
         if sim is None:
             raise ValueError("live dashboard requires a MaleCNS controller")
         from fruit_fly_experiments.visualization.dashboard import Dashboard
-        # 30k real soma positions still give a dense anatomical cloud while cutting
-        # the per-frame 3-D projection work in half compared with the original demo.
-        dashboard = Dashboard(sim, sample_neurons=30000)
+        dashboard = Dashboard(sim, sample_neurons=18000)
 
     logger = RunLogger(Path("results/experiment_001_pong"), seed, controller_name) if log else None
     dt = 0.020
@@ -82,13 +80,16 @@ def run_experiment(
     started = perf_counter()
     latencies = []
     actions = []
-    # Run the simulation at 50 Hz but render the expensive 3-D dashboard at 30 Hz.
-    # Headless experiments remain unthrottled.
     render_accumulator = 0.0
     render_hz = 30.0
     demo_closed_early = False
     try:
         for step in range(steps):
+            # Pace each demo step independently. If a frame is temporarily slow we
+            # do not run a burst of catch-up simulation steps afterward, which was
+            # the source of the end-of-demo stutter.
+            step_started = perf_counter()
+
             sensor_frame = env.render_frame(sensor=True)
             action = controller.act(sensor_frame)
             snapshot = env.step(action, dt)
@@ -133,11 +134,7 @@ def run_experiment(
                     render_accumulator -= 1.0
                     dashboard.draw(env, decision, fps)
 
-                # Pace demo mode to the actual 20 ms simulation timestep instead of
-                # using pygame's old 60 FPS cap, which made a 50 Hz simulation run
-                # too fast while simultaneously over-rendering the 3-D brain.
-                deadline = started + (step + 1) * dt
-                remaining = deadline - perf_counter()
+                remaining = dt - (perf_counter() - step_started)
                 if remaining > 0:
                     sleep(remaining)
     finally:
