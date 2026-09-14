@@ -13,7 +13,7 @@ Activity propagated through the fixed MaleCNS v1.0 connectome may produce above-
 - Drive mapped L1/R7/R8 optic-column neurons from luminance/motion. LC10a receives a bright moving-target signal computed only from rendered pixels; no internal `ball_y`, ball velocity, or target coordinate enters the controller.
 - Run the full fixed sparse graph with simplified leaky integrate-and-fire dynamics.
 - Read bilateral activity from steering-related DNs (`DNa01`, `DNa02`, `DNa03`, `DNa11`, `DNb02`, `DNg13`). A short spike trace is compared by **relative left/right activity**, so sparse DN output is not discarded by an arbitrary large absolute threshold.
-- The dashboard projects released MaleCNS `somaLocation`/`tosomaLocation` coordinates onto X/Z. The positions are anatomical data; the 2-D projection, orientation, colors and activity persistence are visualization choices.
+- The dashboard renders released MaleCNS `somaLocation`/`tosomaLocation` coordinates as an interactive **3-D XYZ soma cloud**. The coordinates are anatomical data; camera projection, colors, depth shading, orbit and activity persistence are visualization choices.
 - **No model or readout is trained.** Connectome weights remain fixed throughout the experiment.
 
 ## Controls
@@ -26,7 +26,20 @@ Score, rally duration, action distribution, output activity, brain-step latency,
 
 ## Results
 
-Behavioral results are not committed yet. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
+### First full fly-controller run
+
+A 30 s run on seed 1 using CUDA completed **1500 simulation steps** on the full retained MaleCNS graph.
+
+| Metric | Result |
+|---|---:|
+| Fly score | 0 |
+| Opponent score | 3 |
+| UP actions | 191 |
+| NEUTRAL actions | 1189 |
+| DOWN actions | 120 |
+| Mean brain latency | 2.841 ms |
+
+This is a **single preliminary run**, not evidence of above-random performance. The random baseline and multi-seed comparison are still required. Run logs are intentionally gitignored; analyze locally with `python scripts/analyze_pong.py <run.csv>`.
 
 ### Local performance benchmark
 
