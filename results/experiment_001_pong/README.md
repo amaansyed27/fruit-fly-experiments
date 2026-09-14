@@ -18,12 +18,14 @@ Activity propagated through the fixed MaleCNS v1.0 connectome may produce above-
 
 ## Controls
 
-Four controller modes are currently evaluated:
+Controller modes:
 
-- `--controller fly` — fixed MaleCNS simulation and biological readout.
+- `--controller fly` — fixed MaleCNS simulation with biological visual entry points and biological steering-DN readout.
+- `--controller fly-no-vision` — same MaleCNS simulation/readout but with zero visual injection.
+- `--controller fly-shuffled-vision` — same rendered-pixel encoder and drive values, but the driven visual-neuron identities are deterministically permuted to random retained neurons. This tests whether the biological visual entry points matter.
 - `--controller random` — uniform random UP/NEUTRAL/DOWN.
 - `--controller neutral` — always NEUTRAL; tests whether simply staying near the centre is strong.
-- `--controller matched-random` — ignores pixels but samples actions using the aggregate MaleCNS action frequencies observed over seeds 1–10. This tests whether any advantage is explained by action-frequency bias rather than sensorimotor structure.
+- `--controller matched-random` — ignores pixels but samples actions using the aggregate MaleCNS action frequencies observed over seeds 1–10.
 
 No learning or plasticity is enabled.
 
@@ -33,39 +35,40 @@ Score, rally duration, action distribution, output activity, brain-step latency,
 
 ## Results
 
-### 10-seed four-controller comparison
+### 10-seed control comparison
 
 Each controller was evaluated for 30 s / 1500 simulation steps on the same ten Pong seeds. Lower opponent score means the fly-side paddle conceded fewer points.
 
-| Seed | MaleCNS | Uniform random | Always neutral | Matched random |
-|---:|---:|---:|---:|---:|
-| 1 | 3 | 7 | 7 | 7 |
-| 2 | 3 | 4 | 5 | 3 |
-| 3 | 1 | 5 | 5 | 3 |
-| 4 | 2 | 7 | 4 | 3 |
-| 5 | 2 | 4 | 7 | 7 |
-| 6 | 2 | 7 | 4 | 5 |
-| 7 | 3 | 4 | 4 | 4 |
-| 8 | 1 | 5 | 7 | 8 |
-| 9 | 1 | 4 | 1 | 3 |
-| 10 | 4 | 8 | 6 | 6 |
-| **Mean conceded** | **2.2** | **5.5** | **5.0** | **4.9** |
+| Seed | MaleCNS | Uniform random | Always neutral | Matched random | MaleCNS no vision |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 3 | 7 | 7 | 7 | 7 |
+| 2 | 3 | 4 | 5 | 3 | 5 |
+| 3 | 1 | 5 | 5 | 3 | 5 |
+| 4 | 2 | 7 | 4 | 3 | 4 |
+| 5 | 2 | 4 | 7 | 7 | 7 |
+| 6 | 2 | 7 | 4 | 5 | 4 |
+| 7 | 3 | 4 | 4 | 4 | 4 |
+| 8 | 1 | 5 | 7 | 8 | 7 |
+| 9 | 1 | 4 | 1 | 3 | 1 |
+| 10 | 4 | 8 | 6 | 6 | 6 |
+| **Mean conceded** | **2.2** | **5.5** | **5.0** | **4.9** | **5.0** |
 
-The MaleCNS controller conceded fewer points than uniform random on **10/10 seeds**, fewer than always-neutral on **9/10 with 1 tie**, and fewer than matched-random on **9/10 with 1 tie**.
+The MaleCNS controller conceded fewer points than uniform random on **10/10 seeds**, fewer than always-neutral on **9/10 with 1 tie**, fewer than matched-random on **9/10 with 1 tie**, and fewer than the same MaleCNS simulation with visual input removed on **9/10 with 1 tie**.
 
 Relative to the controls, mean points conceded fell by:
 
 - **60.0% vs uniform random** (5.5 → 2.2)
 - **56.0% vs always-neutral** (5.0 → 2.2)
 - **55.1% vs matched-random** (4.9 → 2.2)
+- **56.0% vs MaleCNS no-vision** (5.0 → 2.2)
 
-Exact two-sided sign tests on paired direction give **p = 0.00195** vs uniform random and **p = 0.00391** vs both always-neutral and matched-random (ties excluded).
+Exact two-sided sign tests on paired direction give **p = 0.00195** vs uniform random and **p = 0.00391** vs always-neutral, matched-random, and no-vision (ties excluded).
 
-This rules out two simple explanations for the initial result: merely staying near the centre, and merely having a mostly-neutral action-frequency distribution. The timing and direction of MaleCNS-driven actions therefore contain more task-relevant structure than these controls under the current simulator/interface.
+The no-vision MaleCNS produced **1500/1500 NEUTRAL actions on every seed**, and its score pattern exactly matched the always-neutral control. Under the current dynamics/readout, removing visual drive therefore removes the movement that produced the MaleCNS advantage. This is evidence that **task visual input is necessary for the observed defensive behavior**.
 
-However, this still does **not** establish that the advantage is specifically caused by visually guided processing through the connectome. The next required control is to run the same MaleCNS dynamics and motor readout with the task visual input removed. If that no-vision controller performs similarly, the effect could come from intrinsic dynamics rather than visual sensorimotor processing.
+This still does not by itself show that the advantage depends on the *biologically correct visual entry points*. The next ablation is `fly-shuffled-vision`, which preserves the exact pixel-derived timing, drive amplitudes and number of stimulated neurons while scrambling which retained MaleCNS neurons receive that drive. If the normal MaleCNS controller outperforms this shuffled-entry control, the case for connectome-specific sensorimotor structure becomes stronger.
 
-All four controllers scored zero against the opponent in these runs, so the current evidence concerns **defensive survival / reduced misses**, not successful offensive Pong play.
+All evaluated controllers have scored zero against the opponent in these runs, so the current evidence concerns **defensive survival / reduced misses**, not successful offensive Pong play.
 
 ### Aggregate fly action counts, seeds 1–10
 
