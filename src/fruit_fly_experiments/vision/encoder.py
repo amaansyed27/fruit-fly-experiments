@@ -60,6 +60,42 @@ class ShuffledVisionEncoder:
         )
 
 
+class VisionSubsetEncoder:
+    """Ablation wrapper retaining only retinal or only LC10a visual drive."""
+
+    def __init__(self, base, *, keep_retina: bool, keep_lc10a: bool) -> None:
+        if not keep_retina and not keep_lc10a:
+            raise ValueError("VisionSubsetEncoder must retain at least one visual pathway")
+        self.base = base
+        self.keep_retina = bool(keep_retina)
+        self.keep_lc10a = bool(keep_lc10a)
+        allowed: list[int] = []
+        if self.keep_retina:
+            allowed.extend(int(idx) for idx, _, _ in base.retinal)
+        if self.keep_lc10a:
+            allowed.extend(np.asarray(base.lc10a_l, dtype=np.int64).tolist())
+            allowed.extend(np.asarray(base.lc10a_r, dtype=np.int64).tolist())
+        self.allowed = np.unique(np.asarray(allowed, dtype=np.int64))
+
+    def encode(self, frame: np.ndarray) -> EncodedVision:
+        out = self.base.encode(frame)
+        if len(out.neuron_indices):
+            mask = np.isin(out.neuron_indices, self.allowed, assume_unique=False)
+            indices = out.neuron_indices[mask].copy()
+            drive = out.drive[mask].copy()
+        else:
+            indices = out.neuron_indices.copy()
+            drive = out.drive.copy()
+        return EncodedVision(
+            indices,
+            drive,
+            out.motion_centroid,
+            out.motion_energy,
+            out.retinal_count if self.keep_retina else 0,
+            out.lc10a_count if self.keep_lc10a else 0,
+        )
+
+
 class FlyVisualEncoder:
     """Pixel-only visual interface into real MaleCNS visual neuron identities.
 
