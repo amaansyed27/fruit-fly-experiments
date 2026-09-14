@@ -79,7 +79,29 @@ For every one of the five shuffled mappings, the biological visual mapping conce
 
 The 50 shuffled comparisons are not treated as 50 independent statistical observations because the same ten Pong seeds are reused across mappings. This is a reproducibility check across entry-point permutations, not a 50-trial independent test.
 
-These results show that arbitrary visual stimulation elsewhere in the retained network does not reproduce the biological mapping's defensive performance. They do **not yet identify which part of the engineered visual interface is responsible**. In particular, the LC10a branch contains an engineered pixel-derived moving-target centroid. The next component ablation is therefore to compare **retina-only** versus **LC10a-only** input.
+### Retina vs LC10a component ablation
+
+The full visual controller was split into its two input components and rerun over the same ten Pong seeds.
+
+| Seed | Full vision | Retina only (L1/R7/R8) | LC10a only |
+|---:|---:|---:|---:|
+| 1 | 3 | 7 | 3 |
+| 2 | 3 | 5 | 3 |
+| 3 | 1 | 5 | 1 |
+| 4 | 2 | 4 | 2 |
+| 5 | 2 | 7 | 2 |
+| 6 | 2 | 4 | 2 |
+| 7 | 3 | 4 | 3 |
+| 8 | 1 | 7 | 1 |
+| 9 | 1 | 1 | 1 |
+| 10 | 4 | 6 | 4 |
+| **Mean conceded** | **2.2** | **5.0** | **2.2** |
+
+The **retina-only controller produced 1500/1500 NEUTRAL actions on every seed** and exactly matched the no-vision / always-neutral score pattern. By contrast, the **LC10a-only controller exactly reproduced the full controller's score and action counts on all ten seeds**.
+
+Therefore, under the current simulator and interface, the mapped L1/R7/R8 retinal-column drive has **no measurable causal contribution** to the observed Pong behavior. The entire measured advantage comes from the engineered LC10a moving-target branch entering the biological LC10a neurons and then propagating through the fixed connectome to the DN readout.
+
+This substantially narrows the interpretation. The result is **not evidence that the simulated fly retina or a rich fly visual system is solving Pong**. It is evidence that a pixel-derived target-direction signal, when routed through biologically selected LC10a entry neurons in the fixed MaleCNS network, produces defensive steering behavior that is lost when visual input is removed or when the same visual drive is sent to shuffled entry neurons.
 
 One shuffled run (shuffle 101, Pong seed 9) scored a point against the opponent while the biological controller scored zero across the original ten runs. The current biological result is therefore specifically about **reduced misses / defensive survival**, not superior offensive scoring.
 
@@ -106,4 +128,4 @@ The CUDA path is about **11.8× faster** by measured steps/s. PyTorch currently 
 
 ## Limitations
 
-The wiring, neuron IDs, annotations, soma/soma-tract coordinates and synapse-count-derived strengths are biological data. Point-neuron dynamics, neurotransmitter sign simplification, pixel-to-neuron encoding, 90° control-axis rotation, LC10a target salience, relative DN motor decoding, and the Pong mapping of steering laterality to vertical paddle movement are engineered assumptions. This is not a biologically exact digital fly.
+The wiring, neuron IDs, annotations, soma/soma-tract coordinates and synapse-count-derived strengths are biological data. Point-neuron dynamics, neurotransmitter sign simplification, pixel-to-neuron encoding, 90° control-axis rotation, LC10a target salience, relative DN motor decoding, and the Pong mapping of steering laterality to vertical paddle movement are engineered assumptions. The LC10a ablation shows that current behavior is entirely driven by the engineered LC10a target signal; the retinal-column pathway is inactive at the behavioral level in this setup. This is not a biologically exact digital fly.
