@@ -12,7 +12,7 @@ from fruit_fly_experiments.brain.simulator import BrainSimulator
 from fruit_fly_experiments.controllers.fly import FlyController
 from fruit_fly_experiments.controllers.random import MatchedRandomController, NeutralController, RandomController
 from fruit_fly_experiments.games.pong import ACTION_NAMES, PongEnv
-from fruit_fly_experiments.vision.encoder import FlyVisualEncoder, NoVisionEncoder
+from fruit_fly_experiments.vision.encoder import FlyVisualEncoder, NoVisionEncoder, ShuffledVisionEncoder
 from .logging import RunLogger
 
 
@@ -20,14 +20,19 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
     root = data_root or default_data_root()
     env = PongEnv(seed=seed)
     sim = None
-    if controller_name in {"fly", "fly-no-vision"}:
+    if controller_name in {"fly", "fly-no-vision", "fly-shuffled-vision"}:
         graph = ConnectomeGraph.load(root / "processed")
         sim = BrainSimulator(graph, device=device, seed=seed)
-        if controller_name == "fly":
-            optic = root / "raw" / FILES["optic"]
-            encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
-        else:
+        if controller_name == "fly-no-vision":
             encoder = NoVisionEncoder()
+        else:
+            optic = root / "raw" / FILES["optic"]
+            base_encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
+            encoder = (
+                ShuffledVisionEncoder(base_encoder, graph.neurons.size)
+                if controller_name == "fly-shuffled-vision"
+                else base_encoder
+            )
         controller = FlyController(sim, encoder)
     elif controller_name == "random":
         controller = RandomController(seed)
@@ -115,7 +120,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Experiment 001: MaleCNS controls a Pong paddle")
     parser.add_argument(
         "--controller",
-        choices=["fly", "fly-no-vision", "random", "neutral", "matched-random"],
+        choices=["fly", "fly-no-vision", "fly-shuffled-vision", "random", "neutral", "matched-random"],
         default="fly",
     )
     parser.add_argument("--seconds", type=float, default=30.0)
