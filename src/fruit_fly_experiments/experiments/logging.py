@@ -13,7 +13,7 @@ class RunLogger:
         "brain_latency_ms", "fps", "active_neurons", "vision_motion_energy",
     ]
 
-    def __init__(self, root: Path, seed: int, controller: str) -> None:
+    def __init__(self, root: Path, seed: int, controller: str, flush_every: int = 50) -> None:
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         safe_controller = controller.replace("_", "-")
         self.path = root / "runs" / f"run_{stamp}_{safe_controller}_seed{seed}.csv"
@@ -21,10 +21,17 @@ class RunLogger:
         self.file = self.path.open("w", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.file, fieldnames=self.FIELDS)
         self.writer.writeheader()
+        self.flush_every = max(1, int(flush_every))
+        self._pending = 0
 
     def write(self, row: dict) -> None:
         self.writer.writerow({k: row.get(k, "") for k in self.FIELDS})
-        self.file.flush()
+        self._pending += 1
+        if self._pending >= self.flush_every:
+            self.file.flush()
+            self._pending = 0
 
     def close(self) -> None:
-        self.file.close()
+        if not self.file.closed:
+            self.file.flush()
+            self.file.close()
