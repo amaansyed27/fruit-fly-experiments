@@ -16,7 +16,16 @@ from fruit_fly_experiments.vision.encoder import FlyVisualEncoder, NoVisionEncod
 from .logging import RunLogger
 
 
-def run_experiment(controller_name: str, seconds: float, seed: int, device: str, demo: bool, log: bool, data_root: Path | None = None) -> dict:
+def run_experiment(
+    controller_name: str,
+    seconds: float,
+    seed: int,
+    device: str,
+    demo: bool,
+    log: bool,
+    data_root: Path | None = None,
+    shuffle_seed: int = 424242,
+) -> dict:
     root = data_root or default_data_root()
     env = PongEnv(seed=seed)
     sim = None
@@ -29,7 +38,7 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
             optic = root / "raw" / FILES["optic"]
             base_encoder = FlyVisualEncoder.from_data(graph.neurons, optic)
             encoder = (
-                ShuffledVisionEncoder(base_encoder, graph.neurons.size)
+                ShuffledVisionEncoder(base_encoder, graph.neurons.size, shuffle_seed=shuffle_seed)
                 if controller_name == "fly-shuffled-vision"
                 else base_encoder
             )
@@ -104,7 +113,7 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
             dashboard.pg.quit()
 
     snap = env.snapshot()
-    return {
+    result = {
         "controller": controller_name,
         "seed": seed,
         "steps": len(actions),
@@ -114,6 +123,9 @@ def run_experiment(controller_name: str, seconds: float, seed: int, device: str,
         "actions": {name: int(sum(ACTION_NAMES[a] == name for a in actions)) for name in ACTION_NAMES.values()},
         "log": str(logger.path) if logger else None,
     }
+    if controller_name == "fly-shuffled-vision":
+        result["shuffle_seed"] = int(shuffle_seed)
+    return result
 
 
 def main() -> None:
@@ -125,11 +137,21 @@ def main() -> None:
     )
     parser.add_argument("--seconds", type=float, default=30.0)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--shuffle-seed", type=int, default=424242,
+                        help="entry-point permutation seed for --controller fly-shuffled-vision")
     parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     parser.add_argument("--demo", action="store_true")
     parser.add_argument("--no-log", action="store_true")
     args = parser.parse_args()
-    result = run_experiment(args.controller, args.seconds, args.seed, args.device, args.demo, not args.no_log)
+    result = run_experiment(
+        args.controller,
+        args.seconds,
+        args.seed,
+        args.device,
+        args.demo,
+        not args.no_log,
+        shuffle_seed=args.shuffle_seed,
+    )
     print(result)
 
 
