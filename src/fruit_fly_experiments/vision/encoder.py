@@ -20,6 +20,25 @@ class EncodedVision:
     lc10a_count: int
 
 
+class NoVisionEncoder:
+    """Negative-control encoder that removes all task visual drive.
+
+    The brain simulation and descending-neuron motor readout still run normally,
+    but no Pong pixels are injected into visual neurons. This isolates whether
+    performance depends on task visual input rather than intrinsic dynamics.
+    """
+
+    def encode(self, frame: np.ndarray) -> EncodedVision:
+        return EncodedVision(
+            np.empty(0, dtype=np.int64),
+            np.empty(0, dtype=np.float32),
+            0.0,
+            0.0,
+            0,
+            0,
+        )
+
+
 class FlyVisualEncoder:
     """Pixel-only visual interface into real MaleCNS visual neuron identities.
 
