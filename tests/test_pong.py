@@ -1,6 +1,7 @@
 import numpy as np
 from fruit_fly_experiments.games.pong import PongEnv, UP, NEUTRAL
 from fruit_fly_experiments.controllers.random import MatchedRandomController, NeutralController, RandomController
+from fruit_fly_experiments.vision.encoder import NoVisionEncoder
 
 
 def test_controller_receives_only_pixels():
@@ -27,6 +28,16 @@ def test_control_baselines_are_deterministic():
     a = MatchedRandomController(5)
     b = MatchedRandomController(5)
     assert [a.act(frame) for _ in range(30)] == [b.act(frame) for _ in range(30)]
+
+
+def test_no_vision_encoder_removes_all_task_drive():
+    frame = np.random.default_rng(1).random((20, 30), dtype=np.float32)
+    out = NoVisionEncoder().encode(frame)
+    assert out.neuron_indices.size == 0
+    assert out.drive.size == 0
+    assert out.motion_energy == 0.0
+    assert out.retinal_count == 0
+    assert out.lc10a_count == 0
 
 
 def test_headless_baseline_runs_without_brain_data(tmp_path, monkeypatch):
@@ -64,5 +75,10 @@ def test_headless_fly_experiment_with_tiny_graph(tmp_path, monkeypatch):
     ConnectomeGraph(NeuronIndex(np.array([1, 2, 3, 4]), ann), w, 2, 2, np.ones(4), meta).save(root / "processed")
     pd.DataFrame({"column": [], "L1": [], "R7": [], "R8": []}).to_excel(root / "raw" / FILES["optic"], index=False)
     monkeypatch.chdir(tmp_path)
+
     result = run_experiment("fly", .1, 1, "cpu", False, False, data_root=root)
     assert result["steps"] == 5
+
+    no_vision = run_experiment("fly-no-vision", .1, 1, "cpu", False, False, data_root=root)
+    assert no_vision["steps"] == 5
+    assert no_vision["controller"] == "fly-no-vision"
