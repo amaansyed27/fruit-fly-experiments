@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from collections import deque
 import numpy as np
 
@@ -7,11 +8,19 @@ from fruit_fly_experiments.games.pong import ACTION_NAMES, PongEnv
 
 
 class Dashboard:
-    def __init__(self, simulator, width: int = 1280, height: int = 720, sample_neurons: int = 60000, seed: int = 7) -> None:
+    def __init__(
+        self,
+        simulator,
+        width: int = 1280,
+        height: int = 720,
+        sample_neurons: int = 60000,
+        seed: int = 7,
+    ) -> None:
         try:
             import pygame
         except ImportError as exc:
             raise RuntimeError("pygame is required for the live demo") from exc
+
         self.pg = pygame
         pygame.init()
         self.screen = pygame.display.set_mode((width, height))
@@ -24,7 +33,7 @@ class Dashboard:
         self.rng = np.random.default_rng(seed)
 
         neurons = simulator.graph.neurons
-        self.positions = neurons.positions_xyz()
+        self.positions = neurons.positions_xyz().astype(np.float32, copy=True)
         valid = np.flatnonzero(np.isfinite(self.positions).all(axis=1))
         self.anatomical = len(valid) >= 100
         self.background_indices = (
@@ -33,39 +42,53 @@ class Dashboard:
             else np.arange(min(sample_neurons, simulator.n), dtype=np.int64)
         )
 
+        self.view_yaw_offset = 0.0
+        self.view_pitch = np.deg2rad(-5.0)
+        self._dragging = False
+        self._view_yaw = 0.0
+
         if self.anatomical:
-            # MaleCNS X/Z gives a recognizable frontal CNS projection: optic lobes,
-            # central brain and the descending VNC. Coordinates are real EM-frame
-            # soma/soma-tract positions; only the 2-D projection/orientation is visual.
-            self.projected = self.positions[:, [0, 2]].astype(np.float32, copy=True)
+            # Real MaleCNS soma/soma-tract XYZ positions. Orientation changes are
+            # only for display; simulation coordinates/connectivity are untouched.
             self._orient_anatomy(neurons)
-            shown = self.projected[valid]
+            shown = self.positions[valid]
             lo = np.nanpercentile(shown, 0.5, axis=0)
             hi = np.nanpercentile(shown, 99.5, axis=0)
-            self.bounds = (float(lo[0]), float(hi[0]), float(lo[1]), float(hi[1]))
+            center = ((lo + hi) * 0.5).astype(np.float32)
+            self.positions -= center
+            shown = self.positions[valid]
+
+            radial = np.sqrt(shown[:, 0] ** 2 + shown[:, 1] ** 2)
+            self.xy_radius = max(float(np.nanpercentile(radial, 99.5)), 1e-6)
+            self.z_radius = max(float(np.nanpercentile(np.abs(shown[:, 2]), 99.5)), 1e-6)
+            self.depth_radius = max(float(np.nanpercentile(np.abs(shown[:, 1]), 99.5)), 1e-6)
         else:
-            # Synthetic fallback exists only for tiny test/custom graphs that do not
-            # carry MaleCNS positions. Production MaleCNS runs should never use it.
+            # Tiny synthetic graphs used by tests may have no anatomical coordinates.
+            # Keep a deterministic fallback, but production MaleCNS runs use XYZ.
             sides = self.rng.choice([-1.0, 1.0], simulator.n)
-            self.projected = np.column_stack([
-                sides * (0.6 + 0.5 * self.rng.random(simulator.n)) + self.rng.normal(0, 0.14, simulator.n),
-                self.rng.normal(0, 1.0, simulator.n),
-            ]).astype(np.float32)
-            self.bounds = (-1.35, 1.35, -2.4, 2.4)
+            fallback = np.column_stack(
+                [
+                    sides * (0.6 + 0.5 * self.rng.random(simulator.n))
+                    + self.rng.normal(0, 0.14, simulator.n),
+                    self.rng.normal(0, 0.25, simulator.n),
+                    self.rng.normal(0, 1.0, simulator.n),
+                ]
+            ).astype(np.float32)
+            self.positions = fallback
+            self.xy_radius = 1.5
+            self.z_radius = 2.5
+            self.depth_radius = 1.0
 
         output = set(neurons.indices_for_types(STEERING_TYPES, side="L").tolist())
         output.update(neurons.indices_for_types(STEERING_TYPES, side="R").tolist())
         self.output_indices = output
         self.timeline = deque(maxlen=260)
         self.spike_history = deque(maxlen=6)
-        self._brain_background = None
-        self._brain_background_size = None
 
     def _orient_anatomy(self, neurons) -> None:
         ann = neurons.annotations
-        xz = self.projected
 
-        # Put the fly's anatomical right on the viewer's right when side metadata
+        # Put the fly's anatomical right on the viewer's right where side metadata
         # makes the orientation unambiguous.
         side = np.full(neurons.size, "", dtype=object)
         for col in ("somaSide", "rootSide"):
@@ -74,144 +97,324 @@ class Dashboard:
             values = ann[col].fillna("").astype(str).str.upper().to_numpy()
             empty = side == ""
             side[empty] = values[empty]
+
         left = np.flatnonzero(np.isin(side, ["L", "LHS", "LEFT"]))
         right = np.flatnonzero(np.isin(side, ["R", "RHS", "RIGHT"]))
         if len(left) and len(right):
-            lx = np.nanmedian(xz[left, 0]); rx = np.nanmedian(xz[right, 0])
+            lx = np.nanmedian(self.positions[left, 0])
+            rx = np.nanmedian(self.positions[right, 0])
             if np.isfinite(lx) and np.isfinite(rx) and rx < lx:
-                xz[:, 0] *= -1.0
+                self.positions[:, 0] *= -1.0
 
-        # Put the visual/optic end at the top of the panel. This changes only screen
-        # orientation, never any simulation coordinate or connectivity.
+        # Put the optic/visual end at the top of the screen.
         visual = neurons.indices_for_types(["L1", "R7", "R8", "LC10a"])
-        visual = visual[np.isfinite(xz[visual, 1])] if len(visual) else visual
-        all_z = xz[np.isfinite(xz[:, 1]), 1]
+        visual = visual[np.isfinite(self.positions[visual, 2])] if len(visual) else visual
+        all_z = self.positions[np.isfinite(self.positions[:, 2]), 2]
         if len(visual) and len(all_z):
-            if np.nanmedian(xz[visual, 1]) > np.nanmedian(all_z):
-                xz[:, 1] *= -1.0
+            if np.nanmedian(self.positions[visual, 2]) > np.nanmedian(all_z):
+                self.positions[:, 2] *= -1.0
 
     def pump(self) -> bool:
         for event in self.pg.event.get():
-            if event.type == self.pg.QUIT or (event.type == self.pg.KEYDOWN and event.key == self.pg.K_ESCAPE):
+            if event.type == self.pg.QUIT:
                 return False
+            if event.type == self.pg.KEYDOWN:
+                if event.key == self.pg.K_ESCAPE:
+                    return False
+                if event.key == self.pg.K_r:
+                    self.view_yaw_offset = 0.0
+                    self.view_pitch = np.deg2rad(-5.0)
+            elif event.type == self.pg.MOUSEBUTTONDOWN and event.button == 1:
+                self._dragging = True
+            elif event.type == self.pg.MOUSEBUTTONUP and event.button == 1:
+                self._dragging = False
+            elif event.type == self.pg.MOUSEMOTION and self._dragging:
+                self.view_yaw_offset += event.rel[0] * 0.010
+                self.view_pitch = float(
+                    np.clip(self.view_pitch + event.rel[1] * 0.006, -0.55, 0.55)
+                )
         return True
 
     def draw(self, env: PongEnv, decision, fps: float) -> None:
         pg = self.pg
         self.screen.fill((12, 14, 18))
-        margin = 22; bottom_h = 120; gap = 18
+        margin = 22
+        bottom_h = 120
+        gap = 18
         left_w = int(self.w * 0.67)
-        game_rect = pg.Rect(margin, margin, left_w - margin, self.h - bottom_h - margin*2)
-        brain_rect = pg.Rect(left_w + gap, margin, self.w - left_w - gap - margin, self.h - bottom_h - margin*2)
-        timeline_rect = pg.Rect(margin, self.h-bottom_h, self.w-2*margin, bottom_h-margin)
-        self._panel(game_rect); self._panel(brain_rect); self._panel(timeline_rect)
+        game_rect = pg.Rect(margin, margin, left_w - margin, self.h - bottom_h - margin * 2)
+        brain_rect = pg.Rect(
+            left_w + gap,
+            margin,
+            self.w - left_w - gap - margin,
+            self.h - bottom_h - margin * 2,
+        )
+        timeline_rect = pg.Rect(margin, self.h - bottom_h, self.w - 2 * margin, bottom_h - margin)
+        self._panel(game_rect)
+        self._panel(brain_rect)
+        self._panel(timeline_rect)
         self._draw_pong(env, game_rect)
         self._draw_brain(decision, brain_rect)
         self._draw_timeline(decision, timeline_rect, fps, env)
         pg.display.flip()
 
     def _panel(self, rect):
-        self.pg.draw.rect(self.screen, (20,23,29), rect, border_radius=5)
-        self.pg.draw.rect(self.screen, (48,53,64), rect, 1, border_radius=5)
+        self.pg.draw.rect(self.screen, (20, 23, 29), rect, border_radius=5)
+        self.pg.draw.rect(self.screen, (48, 53, 64), rect, 1, border_radius=5)
 
-    def _text(self, text, x, y, font=None, color=(225,229,238)):
-        self.screen.blit((font or self.font).render(str(text), True, color), (x,y))
+    def _text(self, text, x, y, font=None, color=(225, 229, 238)):
+        self.screen.blit((font or self.font).render(str(text), True, color), (x, y))
 
     def _draw_pong(self, env, rect):
-        pg=self.pg; self._text("PONG / FLY VIEW", rect.x+16, rect.y+14, self.big)
-        arena = pg.Rect(rect.x+16, rect.y+58, rect.w-32, rect.h-76)
-        pg.draw.rect(self.screen,(7,9,12),arena)
-        sx, sy = arena.w/env.width, arena.h/env.height
-        for yy in range(arena.y+10, arena.bottom-10, 20): pg.draw.rect(self.screen,(45,49,58),(arena.centerx-1,yy,2,10))
-        def y(v): return int(arena.y+v*sy)
-        pg.draw.rect(self.screen,(235,238,245),(int(arena.x+env.fly_x*sx-3),y(env.fly_y)-int(env.paddle_h*sy/2),6,int(env.paddle_h*sy)))
-        pg.draw.rect(self.screen,(135,143,158),(int(arena.x+env.opp_x*sx-3),y(env.opp_y)-int(env.paddle_h*sy/2),6,int(env.paddle_h*sy)))
-        pg.draw.circle(self.screen,(244,246,250),(int(arena.x+env.ball_x*sx),y(env.ball_y)),max(3,int(env.ball_r*sy)))
-        self._text(f"FLY {env.fly_score}   :   {env.opp_score} OPP", arena.centerx-75, arena.y+8, self.small)
+        pg = self.pg
+        self._text("PONG / FLY VIEW", rect.x + 16, rect.y + 14, self.big)
+        arena = pg.Rect(rect.x + 16, rect.y + 58, rect.w - 32, rect.h - 76)
+        pg.draw.rect(self.screen, (7, 9, 12), arena)
+        sx, sy = arena.w / env.width, arena.h / env.height
+        for yy in range(arena.y + 10, arena.bottom - 10, 20):
+            pg.draw.rect(self.screen, (45, 49, 58), (arena.centerx - 1, yy, 2, 10))
+
+        def y(v):
+            return int(arena.y + v * sy)
+
+        pg.draw.rect(
+            self.screen,
+            (235, 238, 245),
+            (
+                int(arena.x + env.fly_x * sx - 3),
+                y(env.fly_y) - int(env.paddle_h * sy / 2),
+                6,
+                int(env.paddle_h * sy),
+            ),
+        )
+        pg.draw.rect(
+            self.screen,
+            (135, 143, 158),
+            (
+                int(arena.x + env.opp_x * sx - 3),
+                y(env.opp_y) - int(env.paddle_h * sy / 2),
+                6,
+                int(env.paddle_h * sy),
+            ),
+        )
+        pg.draw.circle(
+            self.screen,
+            (244, 246, 250),
+            (int(arena.x + env.ball_x * sx), y(env.ball_y)),
+            max(3, int(env.ball_r * sy)),
+        )
+        self._text(
+            f"FLY {env.fly_score}   :   {env.opp_score} OPP",
+            arena.centerx - 75,
+            arena.y + 8,
+            self.small,
+        )
+
+    def _current_view(self) -> tuple[float, float]:
+        # Slow orbit gives visible depth without spinning the CNS so far that its
+        # anatomy becomes hard to read. Dragging adds a manual offset.
+        t = self.pg.time.get_ticks() / 1000.0
+        auto_yaw = np.deg2rad(24.0) * np.sin(t * 0.55)
+        return auto_yaw + self.view_yaw_offset, self.view_pitch
+
+    def _project_indices(self, indices: np.ndarray, inner):
+        indices = np.asarray(indices, dtype=np.int64)
+        if len(indices) == 0:
+            return (
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.float32),
+                np.empty(0, dtype=bool),
+            )
+
+        xyz = self.positions[indices]
+        finite = np.isfinite(xyz).all(axis=1)
+        xyz = np.where(finite[:, None], xyz, 0.0)
+
+        yaw, pitch = self._view_yaw, self.view_pitch
+        cy, sy = np.cos(yaw), np.sin(yaw)
+        cp, sp = np.cos(pitch), np.sin(pitch)
+
+        # Rotate around anatomical vertical Z, then tilt around screen X.
+        x = xyz[:, 0] * cy - xyz[:, 1] * sy
+        depth = xyz[:, 0] * sy + xyz[:, 1] * cy
+        z = xyz[:, 2]
+        depth2 = depth * cp - z * sp
+        z2 = depth * sp + z * cp
+
+        scale = min(
+            inner.w * 0.45 / max(self.xy_radius, 1e-6),
+            inner.h * 0.45 / max(self.z_radius, 1e-6),
+        )
+
+        # Mild perspective keeps the full CNS readable while making depth obvious.
+        depth_norm = np.clip(depth2 / max(self.depth_radius, 1e-6), -1.0, 1.0)
+        perspective = 1.0 + 0.10 * depth_norm
+        px = np.rint(inner.centerx + x * scale * perspective).astype(np.int32)
+        py = np.rint(inner.centery + z2 * scale * perspective).astype(np.int32)
+        visible = (
+            finite
+            & (px >= inner.left)
+            & (px < inner.right)
+            & (py >= inner.top)
+            & (py < inner.bottom)
+        )
+        return px, py, depth_norm.astype(np.float32), visible
 
     def _point(self, idx: int, inner):
-        x, z = self.projected[int(idx)]
-        if not np.isfinite(x) or not np.isfinite(z):
+        px, py, _, visible = self._project_indices(np.asarray([idx], dtype=np.int64), inner)
+        if len(visible) == 0 or not bool(visible[0]):
             return None
-        xmin, xmax, zmin, zmax = self.bounds
-        xrange = max(xmax - xmin, 1e-6); zrange = max(zmax - zmin, 1e-6)
-        scale = min(inner.w * 0.92 / xrange, inner.h * 0.92 / zrange)
-        px = int(inner.centerx + (x - (xmin+xmax)/2.0) * scale)
-        py = int(inner.centery + (z - (zmin+zmax)/2.0) * scale)
-        return px, py
+        return int(px[0]), int(py[0])
 
-    def _build_brain_background(self, inner):
-        surface = self.pg.Surface((inner.w, inner.h), self.pg.SRCALPHA)
-        local = self.pg.Rect(0, 0, inner.w, inner.h)
-        for i in self.background_indices:
-            point = self._point(int(i), local)
-            if point is None:
-                continue
-            x, y = point
-            if 0 <= x < inner.w and 0 <= y < inner.h:
-                surface.set_at((x, y), (86, 96, 112, 150))
-        self._brain_background = surface
-        self._brain_background_size = (inner.w, inner.h)
+    def _draw_brain_cloud(self, inner) -> None:
+        px, py, depth, visible = self._project_indices(self.background_indices, inner)
+        if not np.any(visible):
+            return
+
+        x = px[visible] - inner.x
+        y = py[visible] - inner.y
+        d = depth[visible]
+
+        # Depth shading on the real XYZ cloud is what makes the view read as 3-D:
+        # farther somata are dimmer; nearer somata are brighter.
+        near = ((d + 1.0) * 0.5).clip(0.0, 1.0)
+        r = (40 + 72 * near).astype(np.uint8)
+        g = (47 + 80 * near).astype(np.uint8)
+        b = (58 + 92 * near).astype(np.uint8)
+
+        pixels = np.zeros((inner.w, inner.h, 3), dtype=np.uint8)
+        np.maximum.at(pixels[:, :, 0], (x, y), r)
+        np.maximum.at(pixels[:, :, 1], (x, y), g)
+        np.maximum.at(pixels[:, :, 2], (x, y), b)
+        cloud = self.pg.surfarray.make_surface(pixels)
+        self.screen.blit(cloud, inner.topleft)
 
     def _draw_brain(self, decision, rect):
-        self._text("FLY BRAIN", rect.x+16, rect.y+14, self.big)
-        subtitle = "MaleCNS anatomical soma projection · X/Z" if self.anatomical else "position fallback"
-        self._text(subtitle, rect.x+17, rect.y+45, self.small, (139,151,170))
-        inner = self.pg.Rect(rect.x+12, rect.y+70, rect.w-24, rect.h-182)
-        if self._brain_background is None or self._brain_background_size != (inner.w, inner.h):
-            self._build_brain_background(inner)
-        self.screen.blit(self._brain_background, inner.topleft)
+        self._text("FLY BRAIN", rect.x + 16, rect.y + 14, self.big)
+        subtitle = (
+            "MaleCNS anatomical 3D soma cloud · XYZ"
+            if self.anatomical
+            else "3D position fallback"
+        )
+        self._text(subtitle, rect.x + 17, rect.y + 45, self.small, (139, 151, 170))
+        inner = self.pg.Rect(rect.x + 12, rect.y + 70, rect.w - 24, rect.h - 182)
+
+        self._view_yaw, _ = self._current_view()
+        self._draw_brain_cloud(inner)
 
         spikes = np.asarray(decision.brain.spikes if decision else [], dtype=np.int64)
         if decision:
             self.spike_history.append(spikes.copy())
 
-            # Short activity persistence makes propagation legible without inventing
-            # any extra neural activity. Older real spikes are simply drawn dimmer.
+            # Short persistence visualizes only real spikes from recent simulation
+            # steps; it does not create synthetic activity.
             history = list(self.spike_history)
             for age, old_spikes in enumerate(history):
                 if len(old_spikes) == 0:
                     continue
                 stride = max(1, len(old_spikes) // 900)
-                intensity = 90 + int(130 * (age + 1) / len(history))
-                radius = 1 if age < len(history)-1 else 2
+                intensity = 90 + int(145 * (age + 1) / len(history))
+                radius = 1 if age < len(history) - 1 else 2
                 for i in old_spikes[::stride]:
                     point = self._point(int(i), inner)
                     if point is not None:
-                        self.pg.draw.circle(self.screen, (intensity,intensity,intensity), point, radius)
+                        self.pg.draw.circle(
+                            self.screen,
+                            (intensity, intensity, intensity),
+                            point,
+                            radius,
+                        )
 
             vision = np.asarray(decision.vision.neuron_indices, dtype=np.int64)
             stride = max(1, len(vision) // 350) if len(vision) else 1
             for i in vision[::stride]:
                 point = self._point(int(i), inner)
                 if point is not None:
-                    self.pg.draw.circle(self.screen,(88,183,255),point,3)
+                    self.pg.draw.circle(self.screen, (88, 183, 255), point, 3)
 
             for i in self.output_indices:
                 point = self._point(int(i), inner)
                 if point is None:
                     continue
                 firing = bool(np.any(spikes == int(i)))
-                self.pg.draw.circle(self.screen,(255,190,92) if firing else (150,105,54),point,4 if firing else 2)
+                self.pg.draw.circle(
+                    self.screen,
+                    (255, 190, 92) if firing else (150, 105, 54),
+                    point,
+                    4 if firing else 2,
+                )
 
-        y=rect.bottom-100
+        self._text(
+            "auto-orbit · drag mouse to rotate · R reset",
+            rect.x + 16,
+            rect.bottom - 122,
+            self.small,
+            (112, 123, 142),
+        )
+        y = rect.bottom - 100
         if decision:
-            self._text(f"active neurons  {decision.brain.active_count:,}",rect.x+16,y,self.small); y+=18
-            self._text(f"visual drive    {len(decision.vision.neuron_indices):,}",rect.x+16,y,self.small); y+=18
-            self._text(f"DN L/R          {decision.left_activity:.3f} / {decision.right_activity:.3f}",rect.x+16,y,self.small); y+=18
-            self._text(f"action          {ACTION_NAMES[decision.action]}",rect.x+16,y,self.small)
-        self._text("VISION  →  BRAIN  →  ACTION",rect.x+16,rect.bottom-24,self.small,(170,180,196))
+            self._text(
+                f"active neurons  {decision.brain.active_count:,}",
+                rect.x + 16,
+                y,
+                self.small,
+            )
+            y += 18
+            self._text(
+                f"visual drive    {len(decision.vision.neuron_indices):,}",
+                rect.x + 16,
+                y,
+                self.small,
+            )
+            y += 18
+            self._text(
+                f"DN L/R          {decision.left_activity:.3f} / {decision.right_activity:.3f}",
+                rect.x + 16,
+                y,
+                self.small,
+            )
+            y += 18
+            self._text(
+                f"action          {ACTION_NAMES[decision.action]}",
+                rect.x + 16,
+                y,
+                self.small,
+            )
+        self._text(
+            "VISION  →  BRAIN  →  ACTION",
+            rect.x + 16,
+            rect.bottom - 24,
+            self.small,
+            (170, 180, 196),
+        )
 
     def _draw_timeline(self, decision, rect, fps, env):
-        action=0 if decision is None else decision.action
+        action = 0 if decision is None else decision.action
         self.timeline.append(action)
-        self._text("EXPERIMENT 001 · MaleCNS v1.0 · fixed wiring · no training",rect.x+14,rect.y+10,self.small)
+        self._text(
+            "EXPERIMENT 001 · MaleCNS v1.0 · fixed wiring · no training",
+            rect.x + 14,
+            rect.y + 10,
+            self.small,
+        )
         if decision:
-            stats=f"166,700 neurons   step {decision.brain.step_index:,}   {1000/max(decision.brain.latency_ms,1e-6):.0f} brain steps/s   {fps:.0f} FPS   latency {decision.brain.latency_ms:.2f} ms"
-            self._text(stats,rect.x+14,rect.y+34,self.small)
-        x0=rect.x+14; base=rect.bottom-22
-        for j,a in enumerate(self.timeline):
-            x=x0+j*4
-            if x >= rect.right-8:
+            stats = (
+                f"166,700 neurons   step {decision.brain.step_index:,}   "
+                f"{1000 / max(decision.brain.latency_ms, 1e-6):.0f} brain steps/s   "
+                f"{fps:.0f} FPS   latency {decision.brain.latency_ms:.2f} ms"
+            )
+            self._text(stats, rect.x + 14, rect.y + 34, self.small)
+        x0 = rect.x + 14
+        base = rect.bottom - 22
+        for j, a in enumerate(self.timeline):
+            x = x0 + j * 4
+            if x >= rect.right - 8:
                 break
-            self.pg.draw.line(self.screen,(150,157,170),(x,base),(x,base-int(a)*12),2)
+            self.pg.draw.line(
+                self.screen,
+                (150, 157, 170),
+                (x, base),
+                (x, base - int(a) * 12),
+                2,
+            )
