@@ -126,6 +126,10 @@ Measured on Amaan's Windows laptop with an NVIDIA GeForce RTX 5060 Laptop GPU us
 
 The CUDA path is about **11.8× faster** by measured steps/s. PyTorch currently reports sparse CSR support as beta; the warning is informational and the benchmark completed successfully.
 
+### Final live-demo validation
+
+After vectorizing spike overlays and reducing display-only 3-D point density, the 30 s seed-8 demo completed smoothly at the full **1500/1500 simulation steps**. It reproduced the expected seed-8 behavior exactly: **0–1 score, 281 UP / 924 NEUTRAL / 295 DOWN**, with mean reported brain-step latency **2.836 ms** during the live dashboard run. These rendering optimizations do not change the controller, connectome, visual encoding, or headless experimental results.
+
 ## Limitations
 
 The wiring, neuron IDs, annotations, soma/soma-tract coordinates and synapse-count-derived strengths are biological data. Point-neuron dynamics, neurotransmitter sign simplification, pixel-to-neuron encoding, 90° control-axis rotation, LC10a target salience, relative DN motor decoding, and the Pong mapping of steering laterality to vertical paddle movement are engineered assumptions. The LC10a ablation shows that current behavior is entirely driven by the engineered LC10a target signal; the retinal-column pathway is inactive at the behavioral level in this setup. This is not a biologically exact digital fly.
