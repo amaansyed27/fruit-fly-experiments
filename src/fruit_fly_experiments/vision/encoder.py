@@ -23,10 +23,10 @@ class EncodedVision:
 class FlyVisualEncoder:
     """Pixel-only visual interface into real MaleCNS visual neuron identities.
 
-    V0.1 rotates the Pong sensor image by 90 degrees so the game's vertical
-    control axis maps onto the fly's left/right steering axis. Retinal columns
-    receive local luminance/motion. LC10a receives a coarse moving-object signal
-    inferred only from frame differencing; no Pong state is available here.
+    Pong is rendered egocentrically and rotated by 90 degrees so the game's
+    vertical control axis maps onto the fly's left/right steering axis. Retinal
+    columns receive local luminance/motion. LC10a receives a coarse small-target
+    motion signal inferred only from image pixels; no Pong state is available.
     """
 
     def __init__(self, neurons: NeuronIndex, optic_columns: pd.DataFrame | None = None) -> None:
@@ -37,7 +37,6 @@ class FlyVisualEncoder:
         self.lc10a_l = neurons.indices_for_types(["LC10a"], side="L")
         self.lc10a_r = neurons.indices_for_types(["LC10a"], side="R")
         if len(self.lc10a_l) == 0 or len(self.lc10a_r) == 0:
-            # Still permits pure-retina runs, but gives an explicit failure if neither route exists.
             if not self.retinal:
                 raise ValueError("no LC10a or optic-column visual neurons found in retained MaleCNS annotations")
 
@@ -87,7 +86,6 @@ class FlyVisualEncoder:
         arr = arr.astype(np.float32)
         if arr.max(initial=0) > 1.0:
             arr /= 255.0
-        # Rotate so Pong vertical displacement becomes horizontal/azimuthal displacement.
         return np.rot90(arr)
 
     def encode(self, frame: np.ndarray) -> EncodedVision:
@@ -111,9 +109,12 @@ class FlyVisualEncoder:
                 drives.append(float(min(0.9, drive)))
                 retinal_count += 1
 
-        # Coarse moving-object detector for LC10a. This is image-derived motion
-        # energy, not ball coordinates or velocity from Pong's internal state.
-        weights = motion * (0.25 + image)
+        # LC10a is a moving-target detector in the biological fly. For Pong we use
+        # only rendered pixels to emphasize the bright moving target over the dimmer
+        # paddles/centre line. This is an engineered sensory interface, not hidden
+        # ball coordinates or velocity from the game state.
+        bright_target = np.clip((image - 0.60) / 0.40, 0.0, 1.0)
+        weights = motion * (0.12 + 1.88 * bright_target)
         energy = float(weights.sum())
         centroid = 0.0
         lc_count = 0
@@ -121,13 +122,13 @@ class FlyVisualEncoder:
             xs = np.linspace(-1.0, 1.0, w, dtype=np.float32)
             profile = weights.sum(axis=0)
             centroid = float((profile * xs).sum() / (profile.sum() + 1e-8))
-            strength = float(np.clip(energy / max(1.0, 0.015 * h * w), 0.0, 1.0))
+            strength = float(np.clip(energy / max(1.0, 0.008 * h * w), 0.0, 1.0))
             left_drive = strength * max(0.0, -centroid)
             right_drive = strength * max(0.0, centroid)
             for group, amount in ((self.lc10a_l, left_drive), (self.lc10a_r, right_drive)):
-                if amount > 0.02 and len(group):
+                if amount > 0.015 and len(group):
                     indices.extend(group.tolist())
-                    drives.extend([0.25 + 0.75 * amount] * len(group))
+                    drives.extend([0.30 + 0.70 * amount] * len(group))
                     lc_count += len(group)
 
         if not indices:
