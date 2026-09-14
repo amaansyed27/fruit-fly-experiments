@@ -4,7 +4,7 @@ Small, visual experiments using the **MaleCNS v1.0 adult male Drosophila connect
 
 ## Experiment 001 — Pong
 
-**Status:** V0.1 implementation complete; fixed wiring, no learning.
+**Status:** V0.1 implemented; fixed wiring, no learning. Full-dataset performance should be verified on the target machine after downloading MaleCNS.
 
 ```text
 rendered Pong vision
