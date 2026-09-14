@@ -13,7 +13,7 @@ class Dashboard:
         simulator,
         width: int = 1280,
         height: int = 720,
-        sample_neurons: int = 60000,
+        sample_neurons: int = 18000,
         seed: int = 7,
     ) -> None:
         try:
@@ -48,25 +48,19 @@ class Dashboard:
         self._view_yaw = 0.0
 
         if self.anatomical:
-            # Real MaleCNS soma/soma-tract XYZ positions. Orientation changes are
-            # only for display; simulation coordinates/connectivity are untouched.
             self._orient_anatomy(neurons)
             shown = self.positions[valid]
             lo = np.nanpercentile(shown, 0.5, axis=0)
             hi = np.nanpercentile(shown, 99.5, axis=0)
-            center = ((lo + hi) * 0.5).astype(np.float32)
-            self.positions -= center
+            self.positions -= ((lo + hi) * 0.5).astype(np.float32)
             shown = self.positions[valid]
-
             radial = np.sqrt(shown[:, 0] ** 2 + shown[:, 1] ** 2)
             self.xy_radius = max(float(np.nanpercentile(radial, 99.5)), 1e-6)
             self.z_radius = max(float(np.nanpercentile(np.abs(shown[:, 2]), 99.5)), 1e-6)
             self.depth_radius = max(float(np.nanpercentile(np.abs(shown[:, 1]), 99.5)), 1e-6)
         else:
-            # Tiny synthetic graphs used by tests may have no anatomical coordinates.
-            # Keep a deterministic fallback, but production MaleCNS runs use XYZ.
             sides = self.rng.choice([-1.0, 1.0], simulator.n)
-            fallback = np.column_stack(
+            self.positions = np.column_stack(
                 [
                     sides * (0.6 + 0.5 * self.rng.random(simulator.n))
                     + self.rng.normal(0, 0.14, simulator.n),
@@ -74,22 +68,20 @@ class Dashboard:
                     self.rng.normal(0, 1.0, simulator.n),
                 ]
             ).astype(np.float32)
-            self.positions = fallback
             self.xy_radius = 1.5
             self.z_radius = 2.5
             self.depth_radius = 1.0
 
-        output = set(neurons.indices_for_types(STEERING_TYPES, side="L").tolist())
-        output.update(neurons.indices_for_types(STEERING_TYPES, side="R").tolist())
-        self.output_indices = output
+        left = neurons.indices_for_types(STEERING_TYPES, side="L")
+        right = neurons.indices_for_types(STEERING_TYPES, side="R")
+        self.output_indices = np.unique(np.concatenate([left, right])).astype(np.int64)
         self.timeline = deque(maxlen=260)
-        self.spike_history = deque(maxlen=6)
+        # Four frames are enough to make sparse spikes readable without letting the
+        # overlay cost grow over the course of a demo.
+        self.spike_history = deque(maxlen=4)
 
     def _orient_anatomy(self, neurons) -> None:
         ann = neurons.annotations
-
-        # Put the fly's anatomical right on the viewer's right where side metadata
-        # makes the orientation unambiguous.
         side = np.full(neurons.size, "", dtype=object)
         for col in ("somaSide", "rootSide"):
             if col not in ann.columns:
@@ -106,7 +98,6 @@ class Dashboard:
             if np.isfinite(lx) and np.isfinite(rx) and rx < lx:
                 self.positions[:, 0] *= -1.0
 
-        # Put the optic/visual end at the top of the screen.
         visual = neurons.indices_for_types(["L1", "R7", "R8", "LC10a"])
         visual = visual[np.isfinite(self.positions[visual, 2])] if len(visual) else visual
         all_z = self.positions[np.isfinite(self.positions[:, 2]), 2]
@@ -155,17 +146,17 @@ class Dashboard:
         self._panel(timeline_rect)
         self._draw_pong(env, game_rect)
         self._draw_brain(decision, brain_rect)
-        self._draw_timeline(decision, timeline_rect, fps, env)
+        self._draw_timeline(decision, timeline_rect, fps)
         pg.display.flip()
 
-    def _panel(self, rect):
+    def _panel(self, rect) -> None:
         self.pg.draw.rect(self.screen, (20, 23, 29), rect, border_radius=5)
         self.pg.draw.rect(self.screen, (48, 53, 64), rect, 1, border_radius=5)
 
-    def _text(self, text, x, y, font=None, color=(225, 229, 238)):
+    def _text(self, text, x, y, font=None, color=(225, 229, 238)) -> None:
         self.screen.blit((font or self.font).render(str(text), True, color), (x, y))
 
-    def _draw_pong(self, env, rect):
+    def _draw_pong(self, env, rect) -> None:
         pg = self.pg
         self._text("PONG / FLY VIEW", rect.x + 16, rect.y + 14, self.big)
         arena = pg.Rect(rect.x + 16, rect.y + 58, rect.w - 32, rect.h - 76)
@@ -211,8 +202,6 @@ class Dashboard:
         )
 
     def _current_view(self) -> tuple[float, float]:
-        # Slow orbit gives visible depth without spinning the CNS so far that its
-        # anatomy becomes hard to read. Dragging adds a manual offset.
         t = self.pg.time.get_ticks() / 1000.0
         auto_yaw = np.deg2rad(24.0) * np.sin(t * 0.55)
         return auto_yaw + self.view_yaw_offset, self.view_pitch
@@ -234,8 +223,6 @@ class Dashboard:
         yaw, pitch = self._view_yaw, self.view_pitch
         cy, sy = np.cos(yaw), np.sin(yaw)
         cp, sp = np.cos(pitch), np.sin(pitch)
-
-        # Rotate around anatomical vertical Z, then tilt around screen X.
         x = xyz[:, 0] * cy - xyz[:, 1] * sy
         depth = xyz[:, 0] * sy + xyz[:, 1] * cy
         z = xyz[:, 2]
@@ -246,8 +233,6 @@ class Dashboard:
             inner.w * 0.45 / max(self.xy_radius, 1e-6),
             inner.h * 0.45 / max(self.z_radius, 1e-6),
         )
-
-        # Mild perspective keeps the full CNS readable while making depth obvious.
         depth_norm = np.clip(depth2 / max(self.depth_radius, 1e-6), -1.0, 1.0)
         perspective = 1.0 + 0.10 * depth_norm
         px = np.rint(inner.centerx + x * scale * perspective).astype(np.int32)
@@ -261,42 +246,36 @@ class Dashboard:
         )
         return px, py, depth_norm.astype(np.float32), visible
 
-    def _point(self, idx: int, inner):
-        px, py, _, visible = self._project_indices(np.asarray([idx], dtype=np.int64), inner)
-        if len(visible) == 0 or not bool(visible[0]):
-            return None
-        return int(px[0]), int(py[0])
+    def _draw_points(self, indices, inner, color, radius: int, max_points: int) -> None:
+        indices = np.asarray(indices, dtype=np.int64)
+        if len(indices) == 0:
+            return
+        stride = max(1, int(np.ceil(len(indices) / max_points)))
+        indices = indices[::stride]
+        px, py, _, visible = self._project_indices(indices, inner)
+        points = zip(px[visible].tolist(), py[visible].tolist())
+        for point in points:
+            self.pg.draw.circle(self.screen, color, point, radius)
 
     def _draw_brain_cloud(self, inner) -> None:
         px, py, depth, visible = self._project_indices(self.background_indices, inner)
         if not np.any(visible):
             return
-
         x = px[visible] - inner.x
         y = py[visible] - inner.y
-        d = depth[visible]
-
-        # Depth shading on the real XYZ cloud is what makes the view read as 3-D:
-        # farther somata are dimmer; nearer somata are brighter.
-        near = ((d + 1.0) * 0.5).clip(0.0, 1.0)
+        near = ((depth[visible] + 1.0) * 0.5).clip(0.0, 1.0)
         r = (40 + 72 * near).astype(np.uint8)
         g = (47 + 80 * near).astype(np.uint8)
         b = (58 + 92 * near).astype(np.uint8)
-
         pixels = np.zeros((inner.w, inner.h, 3), dtype=np.uint8)
         np.maximum.at(pixels[:, :, 0], (x, y), r)
         np.maximum.at(pixels[:, :, 1], (x, y), g)
         np.maximum.at(pixels[:, :, 2], (x, y), b)
-        cloud = self.pg.surfarray.make_surface(pixels)
-        self.screen.blit(cloud, inner.topleft)
+        self.screen.blit(self.pg.surfarray.make_surface(pixels), inner.topleft)
 
-    def _draw_brain(self, decision, rect):
+    def _draw_brain(self, decision, rect) -> None:
         self._text("FLY BRAIN", rect.x + 16, rect.y + 14, self.big)
-        subtitle = (
-            "MaleCNS anatomical 3D soma cloud · XYZ"
-            if self.anatomical
-            else "3D position fallback"
-        )
+        subtitle = "MaleCNS anatomical 3D soma cloud · XYZ" if self.anatomical else "3D position fallback"
         self._text(subtitle, rect.x + 17, rect.y + 45, self.small, (139, 151, 170))
         inner = self.pg.Rect(rect.x + 12, rect.y + 70, rect.w - 24, rect.h - 182)
 
@@ -306,43 +285,35 @@ class Dashboard:
         spikes = np.asarray(decision.brain.spikes if decision else [], dtype=np.int64)
         if decision:
             self.spike_history.append(spikes.copy())
-
-            # Short persistence visualizes only real spikes from recent simulation
-            # steps; it does not create synthetic activity.
             history = list(self.spike_history)
             for age, old_spikes in enumerate(history):
-                if len(old_spikes) == 0:
-                    continue
-                stride = max(1, len(old_spikes) // 900)
                 intensity = 90 + int(145 * (age + 1) / len(history))
                 radius = 1 if age < len(history) - 1 else 2
-                for i in old_spikes[::stride]:
-                    point = self._point(int(i), inner)
-                    if point is not None:
-                        self.pg.draw.circle(
-                            self.screen,
-                            (intensity, intensity, intensity),
-                            point,
-                            radius,
-                        )
+                self._draw_points(old_spikes, inner, (intensity, intensity, intensity), radius, 300)
 
-            vision = np.asarray(decision.vision.neuron_indices, dtype=np.int64)
-            stride = max(1, len(vision) // 350) if len(vision) else 1
-            for i in vision[::stride]:
-                point = self._point(int(i), inner)
-                if point is not None:
-                    self.pg.draw.circle(self.screen, (88, 183, 255), point, 3)
+            self._draw_points(
+                decision.vision.neuron_indices,
+                inner,
+                (88, 183, 255),
+                3,
+                180,
+            )
 
-            for i in self.output_indices:
-                point = self._point(int(i), inner)
-                if point is None:
-                    continue
-                firing = bool(np.any(spikes == int(i)))
-                self.pg.draw.circle(
-                    self.screen,
-                    (255, 190, 92) if firing else (150, 105, 54),
-                    point,
-                    4 if firing else 2,
+            if len(self.output_indices):
+                fired_mask = np.isin(self.output_indices, spikes, assume_unique=False)
+                self._draw_points(
+                    self.output_indices[~fired_mask],
+                    inner,
+                    (150, 105, 54),
+                    2,
+                    max(1, len(self.output_indices)),
+                )
+                self._draw_points(
+                    self.output_indices[fired_mask],
+                    inner,
+                    (255, 190, 92),
+                    4,
+                    max(1, len(self.output_indices)),
                 )
 
         self._text(
@@ -354,12 +325,7 @@ class Dashboard:
         )
         y = rect.bottom - 100
         if decision:
-            self._text(
-                f"active neurons  {decision.brain.active_count:,}",
-                rect.x + 16,
-                y,
-                self.small,
-            )
+            self._text(f"active neurons  {decision.brain.active_count:,}", rect.x + 16, y, self.small)
             y += 18
             self._text(
                 f"visual drive    {len(decision.vision.neuron_indices):,}",
@@ -375,12 +341,7 @@ class Dashboard:
                 self.small,
             )
             y += 18
-            self._text(
-                f"action          {ACTION_NAMES[decision.action]}",
-                rect.x + 16,
-                y,
-                self.small,
-            )
+            self._text(f"action          {ACTION_NAMES[decision.action]}", rect.x + 16, y, self.small)
         self._text(
             "VISION  →  BRAIN  →  ACTION",
             rect.x + 16,
@@ -389,7 +350,7 @@ class Dashboard:
             (170, 180, 196),
         )
 
-    def _draw_timeline(self, decision, rect, fps, env):
+    def _draw_timeline(self, decision, rect, fps) -> None:
         action = 0 if decision is None else decision.action
         self.timeline.append(action)
         self._text(
@@ -402,7 +363,7 @@ class Dashboard:
             stats = (
                 f"166,700 neurons   step {decision.brain.step_index:,}   "
                 f"{1000 / max(decision.brain.latency_ms, 1e-6):.0f} brain steps/s   "
-                f"{fps:.0f} FPS   latency {decision.brain.latency_ms:.2f} ms"
+                f"{fps:.0f} sim steps/s   latency {decision.brain.latency_ms:.2f} ms"
             )
             self._text(stats, rect.x + 14, rect.y + 34, self.small)
         x0 = rect.x + 14
